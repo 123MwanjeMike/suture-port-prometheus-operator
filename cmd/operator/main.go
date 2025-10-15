@@ -197,6 +197,12 @@ func parseFlags(fs *flag.FlagSet) {
 	_ = fs.Parse(os.Args[1:])
 }
 
+type roundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
+
 func run(fs *flag.FlagSet) int {
 	parseFlags(fs)
 
@@ -249,6 +255,16 @@ func run(fs *flag.FlagSet) int {
 		logger.Error("failed to create Kubernetes client configuration", "err", err)
 		cancel()
 		return 1
+	}
+
+	sutureID := os.Getenv("SUTURE_ID")
+	restConfig.WrapTransport = func(rt http.RoundTripper) http.RoundTripper {
+		return roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			if sutureID != "" {
+				req.Header.Set("Suture_ID", sutureID)
+			}
+			return rt.RoundTrip(req)
+		})
 	}
 
 	kclient, err := kubernetes.NewForConfig(restConfig)
